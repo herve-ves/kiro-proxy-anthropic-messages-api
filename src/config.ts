@@ -3,6 +3,14 @@
 import { homedir } from 'os'
 import { join } from 'path'
 
+function expandTilde(filePath: string | undefined): string | undefined {
+  if (!filePath) return undefined
+  if (filePath.startsWith('~/')) {
+    return join(homedir(), filePath.slice(2))
+  }
+  return filePath
+}
+
 export const config = {
   // Server
   port: Number(process.env.PORT) || 8000,
@@ -18,14 +26,16 @@ export const config = {
   awsSsoOidcUrl: (region: string) =>
     `https://oidc.${region}.amazonaws.com/token`,
 
-  // Credentials
+  // Region
   region: process.env.KIRO_REGION || 'us-east-1',
-  credsFile: process.env.KIRO_CREDS_FILE || join(homedir(), '.kiro', 'credentials.json'),
-  sqliteDb: process.env.KIRO_CLI_DB_FILE,
 
-  // Default paths for credentials
-  kiroDesktopCredsPath: join(homedir(), '.kiro', 'credentials.json'),
-  awsSsoOidcDbPath: join(homedir(), '.kiro-cli', 'kiro-cli.db'),
+  // Authentication credentials (three separate methods)
+  // 1. Kiro Desktop (Social Login) - JSON file
+  kiroDesktopCredsFile: expandTilde(process.env.KIRO_DESKTOP_CREDS_FILE) || join(homedir(), '.kiro', 'credentials.json'),
+  // 2. Enterprise IdC (AWS Identity Center) - JSON file
+  kiroIdcCredsFile: expandTilde(process.env.KIRO_IDC_CREDS_FILE),
+  // 3. kiro-cli (AWS SSO OIDC) - SQLite database
+  kiroCliDbFile: expandTilde(process.env.KIRO_CLI_DB_FILE) || join(homedir(), '.kiro-cli', 'kiro-cli.db'),
 
   // Timeouts
   requestTimeout: 300000, // 5 minutes in ms

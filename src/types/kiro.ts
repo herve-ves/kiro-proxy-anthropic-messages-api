@@ -105,8 +105,15 @@ export interface KiroStreamEvent {
 export interface KiroDesktopCredentials {
   accessToken: string
   refreshToken: string
-  expiresAt?: number
+  expiresAt?: string
   region?: string
+  // IdC (Enterprise) specific fields
+  authMethod?: 'IdC' | 'social'
+  clientIdHash?: string
+  provider?: string
+  // Loaded from device registration file for IdC
+  clientId?: string
+  clientSecret?: string
 }
 
 export interface AwsSsoOidcCredentials {

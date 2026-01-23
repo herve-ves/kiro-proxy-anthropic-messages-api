@@ -18,72 +18,55 @@ class AuthManager {
   async initialize(): Promise<void> {
     if (this.initialized) return
 
-    // Load Kiro Desktop credentials
-    const kiroDesktopCreds = await loadKiroDesktopCredentials(config.kiroDesktopCredsPath)
-    if (kiroDesktopCreds) {
+    // 1. Load Kiro Desktop (Social Login) credentials
+    const kiroDesktopCreds = await loadKiroDesktopCredentials(config.kiroDesktopCredsFile)
+    if (kiroDesktopCreds && kiroDesktopCreds.authMethod !== 'IdC') {
       try {
         const token = await refreshKiroDesktopToken(kiroDesktopCreds)
         this.cachedTokens.push({
           ...token,
           credentials: kiroDesktopCreds,
         })
-        console.log('Loaded Kiro Desktop credentials')
+        console.log('Loaded Kiro Desktop (Social) credentials')
       } catch (error) {
         console.error('Failed to refresh Kiro Desktop token:', error)
       }
     }
 
-    // Load AWS SSO OIDC credentials
-    const awsSsoOidcCreds = await loadAwsSsoOidcCredentials(config.awsSsoOidcDbPath)
-    for (const creds of awsSsoOidcCreds) {
+    // 2. Load Enterprise IdC credentials (if configured)
+    if (config.kiroIdcCredsFile) {
+      const idcCreds = await loadKiroDesktopCredentials(config.kiroIdcCredsFile)
+      if (idcCreds) {
+        try {
+          const token = await refreshKiroDesktopToken(idcCreds)
+          this.cachedTokens.push({
+            ...token,
+            credentials: idcCreds,
+          })
+          console.log('Loaded Enterprise IdC credentials')
+        } catch (error) {
+          console.error('Failed to refresh Enterprise IdC token:', error)
+        }
+      }
+    }
+
+    // 3. Load kiro-cli (AWS SSO OIDC) credentials from SQLite
+    const kiroCliCreds = await loadAwsSsoOidcCredentials(config.kiroCliDbFile)
+    for (const creds of kiroCliCreds) {
       try {
         const token = await refreshAwsSsoOidcToken(creds)
         this.cachedTokens.push({
           ...token,
           credentials: creds,
         })
-        console.log('Loaded AWS SSO OIDC credentials')
+        console.log('Loaded kiro-cli credentials')
       } catch (error) {
-        console.error('Failed to refresh AWS SSO OIDC token:', error)
-      }
-    }
-
-    // Also try custom credentials file if specified
-    if (config.credsFile && config.credsFile !== config.kiroDesktopCredsPath) {
-      const customCreds = await loadKiroDesktopCredentials(config.credsFile)
-      if (customCreds) {
-        try {
-          const token = await refreshKiroDesktopToken(customCreds)
-          this.cachedTokens.push({
-            ...token,
-            credentials: customCreds,
-          })
-          console.log('Loaded custom credentials file')
-        } catch (error) {
-          console.error('Failed to refresh custom credentials:', error)
-        }
-      }
-    }
-
-    // Try custom SQLite DB if specified
-    if (config.sqliteDb && config.sqliteDb !== config.awsSsoOidcDbPath) {
-      const customSsoCreds = await loadAwsSsoOidcCredentials(config.sqliteDb)
-      for (const creds of customSsoCreds) {
-        try {
-          const token = await refreshAwsSsoOidcToken(creds)
-          this.cachedTokens.push({
-            ...token,
-            credentials: creds,
-          })
-          console.log('Loaded custom SQLite credentials')
-        } catch (error) {
-          console.error('Failed to refresh custom SQLite credentials:', error)
-        }
+        console.error('Failed to refresh kiro-cli token:', error)
       }
     }
 
     if (this.cachedTokens.length === 0) {
-      throw new Error('No valid credentials found. Please configure Kiro Desktop or AWS SSO OIDC credentials.')
+      throw new Error('No valid credentials found. Please configure one of: KIRO_DESKTOP_CREDS_FILE, KIRO_IDC_CREDS_FILE, or KIRO_CLI_DB_FILE')
     }
 
     this.initialized = true
