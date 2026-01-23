@@ -8,7 +8,21 @@ import { authManager } from './auth/manager'
 import { messagesRouter } from './routes/messages'
 import { logger } from './utils/logger'
 import { initUsageDb, closeUsageDb } from './utils/usage-db'
+import { runModelsCommand } from './cli/models'
 
+// Handle CLI subcommands
+const args = process.argv.slice(2)
+if (args[0] === 'models') {
+  runModelsCommand().then(() => process.exit(0)).catch((err) => {
+    console.error('Error:', err)
+    process.exit(1)
+  })
+} else {
+  // Start server (default behavior)
+  startServer()
+}
+
+function startServer() {
 const app = new Hono()
 
 // CORS middleware
@@ -100,3 +114,4 @@ async function main() {
 }
 
 main().catch((err) => logger.error({ err }, 'Fatal error'))
+}

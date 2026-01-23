@@ -11,6 +11,15 @@ function expandTilde(filePath: string | undefined): string | undefined {
   return filePath
 }
 
+// Kiro supported models
+const KIRO_MODELS = new Set([
+  'auto',
+  'claude-sonnet-4.5',
+  'claude-sonnet-4',
+  'claude-haiku-4.5',
+  'claude-opus-4.5',
+])
+
 export const config = {
   // Server
   port: Number(process.env.PORT) || 8000,
@@ -45,26 +54,36 @@ export const config = {
   maxTools: 50,
   maxToolDescriptionLength: 500,
 
-  // Model mapping
+  // Model mapping (Anthropic model -> Kiro model)
   defaultModel: 'claude-sonnet-4',
   modelMapping: {
-    'claude-sonnet-4': 'claude-sonnet-4',
-    'claude-3-5-sonnet-20241022': 'claude-sonnet-4',
-    'claude-3-5-sonnet-latest': 'claude-sonnet-4',
-    'claude-3-opus-20240229': 'claude-sonnet-4',
-    'claude-3-sonnet-20240229': 'claude-sonnet-4',
-    'claude-3-haiku-20240307': 'claude-sonnet-4',
+    // Claude 4 Sonnet
+    'claude-sonnet-4-20250514': 'claude-sonnet-4',
+    'claude-sonnet-4-0': 'claude-sonnet-4',
+    'claude-sonnet-4-5-20250929': 'claude-sonnet-4.5',
+    'claude-sonnet-4-5': 'claude-sonnet-4.5',
+    // Claude 4 Opus
+    'claude-opus-4-20250514': 'claude-opus-4.5',
+    'claude-opus-4-0': 'claude-opus-4.5',
+    'claude-opus-4-1-20250805': 'claude-opus-4.5',
+    'claude-opus-4-1': 'claude-opus-4.5',
+    'claude-opus-4-5-20251101': 'claude-opus-4.5',
+    'claude-opus-4-5': 'claude-opus-4.5',
+    // Claude 4 Haiku
+    'claude-haiku-4-5-20251001': 'claude-haiku-4.5',
+    'claude-haiku-4-5': 'claude-haiku-4.5',
+    // Aliases
+    'sonnet': 'claude-sonnet-4',
+    'haiku': 'claude-haiku-4.5',
+    'opus': 'claude-opus-4.5',
   } as Record<string, string>,
 
-  // Model max context tokens (for token estimation from contextUsagePercentage)
+  // Model max context tokens
   modelMaxContextTokens: {
     'claude-sonnet-4': 200000,
-    'claude-opus-4': 200000,
-    'claude-haiku-4': 200000,
-    'claude-3-5-sonnet-20241022': 200000,
-    'claude-3-opus-20240229': 200000,
-    'claude-3-sonnet-20240229': 200000,
-    'claude-3-haiku-20240307': 200000,
+    'claude-sonnet-4.5': 200000,
+    'claude-opus-4.5': 200000,
+    'claude-haiku-4.5': 200000,
   } as Record<string, number>,
   defaultMaxContextTokens: 200000,
 
@@ -76,7 +95,35 @@ export const config = {
 }
 
 export function getKiroModel(anthropicModel: string): string {
-  return config.modelMapping[anthropicModel] || config.defaultModel
+  if (!anthropicModel) {
+    return config.defaultModel
+  }
+
+  // Check explicit mapping first
+  if (config.modelMapping[anthropicModel]) {
+    return config.modelMapping[anthropicModel]
+  }
+
+  // Already a Kiro model
+  if (KIRO_MODELS.has(anthropicModel)) {
+    return anthropicModel
+  }
+
+  // Smart fallback based on model name
+  const modelLower = anthropicModel.toLowerCase()
+  if (modelLower.includes('opus')) {
+    return 'claude-opus-4.5'
+  }
+  if (modelLower.includes('haiku')) {
+    return 'claude-haiku-4.5'
+  }
+  if (modelLower.includes('sonnet')) {
+    return modelLower.includes('4.5') || modelLower.includes('4-5')
+      ? 'claude-sonnet-4.5'
+      : 'claude-sonnet-4'
+  }
+
+  return config.defaultModel
 }
 
 export function getModelMaxContextTokens(model: string): number {
