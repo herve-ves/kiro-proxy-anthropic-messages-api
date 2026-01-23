@@ -5,6 +5,7 @@ import { config } from '../config'
 import { authManager } from '../auth/manager'
 import { buildKiroHeaders } from '../utils/headers'
 import { getMachineId } from '../utils/machine-id'
+import { logger } from '../utils/logger'
 
 interface KiroModel {
   modelId: string
@@ -45,62 +46,62 @@ async function fetchKiroModels(): Promise<KiroModel[]> {
 }
 
 export async function runModelsCommand(): Promise<void> {
-  console.log('Initializing authentication...')
+  logger.info('Initializing authentication...')
 
   try {
     await authManager.initialize()
   } catch (error) {
-    console.error('Failed to initialize authentication:', error)
+    logger.error({ error }, 'Failed to initialize authentication')
     process.exit(1)
   }
 
-  console.log('')
-  console.log('='.repeat(60))
-  console.log('Kiro Available Models (from ListAvailableModels API)')
-  console.log('='.repeat(60))
+  logger.info('')
+  logger.info('='.repeat(60))
+  logger.info('Kiro Available Models (from ListAvailableModels API)')
+  logger.info('='.repeat(60))
 
   try {
     const kiroModels = await fetchKiroModels()
     if (kiroModels.length === 0) {
-      console.log('No models available from Kiro API')
+      logger.info('No models available from Kiro API')
     } else {
       for (const model of kiroModels) {
         const tokens = model.tokenLimits?.maxInputTokens
           ? `${model.tokenLimits.maxInputTokens.toLocaleString()} tokens`
           : 'N/A'
-        console.log(`  - ${model.modelId} (${model.modelName || 'N/A'}) - rate: ${model.rateMultiplier || 1}x, context: ${tokens}`)
+        logger.info(`  - ${model.modelId} (${model.modelName || 'N/A'}) - rate: ${model.rateMultiplier || 1}x, context: ${tokens}`)
       }
     }
   } catch (error) {
-    console.error('Failed to fetch Kiro models:', error)
+    logger.error({ error }, 'Failed to fetch Kiro models')
   }
 
-  console.log('')
-  console.log('='.repeat(60))
-  console.log('Model Mapping (Anthropic -> Kiro)')
-  console.log('='.repeat(60))
-  console.log(`Default model: ${config.defaultModel}`)
-  console.log('')
+  logger.info('')
+  logger.info('='.repeat(60))
+  logger.info('Model Mapping (Anthropic -> Kiro)')
+  logger.info('='.repeat(60))
+  logger.info(`Default model: ${config.defaultModel}`)
+  logger.info('')
 
   const mappingEntries = Object.entries(config.modelMapping)
-  console.log(`Total mappings: ${mappingEntries.length}`)
-  console.log('')
+  logger.info(`Total mappings: ${mappingEntries.length}`)
+  logger.info('')
 
   for (const [anthropicModel, kiroModel] of mappingEntries) {
-    console.log(`  ${anthropicModel} -> ${kiroModel}`)
+    logger.info(`  ${anthropicModel} -> ${kiroModel}`)
   }
 
-  console.log('')
-  console.log('='.repeat(60))
-  console.log('Model Max Context Tokens')
-  console.log('='.repeat(60))
-  console.log(`Default: ${config.defaultMaxContextTokens}`)
-  console.log('')
+  logger.info('')
+  logger.info('='.repeat(60))
+  logger.info('Model Max Context Tokens')
+  logger.info('='.repeat(60))
+  logger.info(`Default: ${config.defaultMaxContextTokens}`)
+  logger.info('')
 
   const contextEntries = Object.entries(config.modelMaxContextTokens)
   for (const [model, tokens] of contextEntries) {
-    console.log(`  ${model}: ${tokens.toLocaleString()}`)
+    logger.info(`  ${model}: ${tokens.toLocaleString()}`)
   }
 
-  console.log('')
+  logger.info('')
 }

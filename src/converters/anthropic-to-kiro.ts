@@ -4,7 +4,6 @@ import type { AnthropicMessage, AnthropicTool, AnthropicSystemBlock } from '../t
 import type {
   KiroHistoryItem,
   KiroToolResult,
-  KiroTool,
   KiroImage,
   KiroUserHistoryItem,
   KiroAssistantHistoryItem,
@@ -17,7 +16,6 @@ import {
   extractToolResults,
   extractImages,
   convertTools,
-  hasToolResults,
 } from './utils'
 import { fixHistoryAlternation } from './history'
 
