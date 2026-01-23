@@ -1,11 +1,41 @@
 // Anthropic SSE Formatter
 
+import { getModelMaxContextTokens } from '../config'
 import type { StreamParseResult } from '../types/common'
+
+/**
+ * Estimate output tokens from text length (rough: length / 4)
+ */
+function estimateOutputTokens(textLength: number): number {
+  return Math.max(1, Math.round(textLength / 4))
+}
+
+/**
+ * Calculate token counts from contextUsagePercentage and output text
+ * Returns { inputTokens, outputTokens, totalTokens }
+ */
+function calculateTokens(
+  contextUsagePercentage: number | undefined,
+  model: string,
+  outputTextLength: number
+): { inputTokens: number; outputTokens: number; totalTokens: number } {
+  const outputTokens = estimateOutputTokens(outputTextLength)
+
+  if (contextUsagePercentage === undefined || contextUsagePercentage <= 0) {
+    return { inputTokens: 1, outputTokens, totalTokens: outputTokens + 1 }
+  }
+
+  const maxContextTokens = getModelMaxContextTokens(model)
+  const totalTokens = Math.round((contextUsagePercentage / 100) * maxContextTokens)
+  const inputTokens = Math.max(1, totalTokens - outputTokens)
+
+  return { inputTokens, outputTokens, totalTokens }
+}
 
 /**
  * Format a message_start SSE event
  */
-export function formatMessageStart(messageId: string, model: string): string {
+export function formatMessageStart(messageId: string, model: string, inputTokens: number = 1): string {
   const event = {
     type: 'message_start',
     message: {
@@ -16,10 +46,10 @@ export function formatMessageStart(messageId: string, model: string): string {
       model,
       stop_reason: null,
       stop_sequence: null,
-      usage: { input_tokens: 0, output_tokens: 0 },
+      usage: { input_tokens: inputTokens, output_tokens: 1 },
     },
   }
-  return `data: ${JSON.stringify(event)}\n\n`
+  return `event: message_start\ndata: ${JSON.stringify(event)}\n\n`
 }
 
 /**
@@ -31,7 +61,7 @@ export function formatTextBlockStart(index: number): string {
     index,
     content_block: { type: 'text', text: '' },
   }
-  return `data: ${JSON.stringify(event)}\n\n`
+  return `event: content_block_start\ndata: ${JSON.stringify(event)}\n\n`
 }
 
 /**
@@ -47,7 +77,7 @@ export function formatToolUseBlockStart(
     index,
     content_block: { type: 'tool_use', id: toolId, name: toolName, input: {} },
   }
-  return `data: ${JSON.stringify(event)}\n\n`
+  return `event: content_block_start\ndata: ${JSON.stringify(event)}\n\n`
 }
 
 /**
@@ -59,7 +89,7 @@ export function formatTextDelta(index: number, text: string): string {
     index,
     delta: { type: 'text_delta', text },
   }
-  return `data: ${JSON.stringify(event)}\n\n`
+  return `event: content_block_delta\ndata: ${JSON.stringify(event)}\n\n`
 }
 
 /**
@@ -71,7 +101,7 @@ export function formatInputJsonDelta(index: number, partialJson: string): string
     index,
     delta: { type: 'input_json_delta', partial_json: partialJson },
   }
-  return `data: ${JSON.stringify(event)}\n\n`
+  return `event: content_block_delta\ndata: ${JSON.stringify(event)}\n\n`
 }
 
 /**
@@ -82,7 +112,7 @@ export function formatContentBlockStop(index: number): string {
     type: 'content_block_stop',
     index,
   }
-  return `data: ${JSON.stringify(event)}\n\n`
+  return `event: content_block_stop\ndata: ${JSON.stringify(event)}\n\n`
 }
 
 /**
@@ -97,83 +127,42 @@ export function formatMessageDelta(
     delta: { stop_reason: stopReason, stop_sequence: null },
     usage: { output_tokens: outputTokens },
   }
-  return `data: ${JSON.stringify(event)}\n\n`
+  return `event: message_delta\ndata: ${JSON.stringify(event)}\n\n`
 }
 
 /**
  * Format a message_stop SSE event
  */
 export function formatMessageStop(): string {
-  return `data: {"type":"message_stop"}\n\n`
+  return `event: message_stop\ndata: {"type":"message_stop"}\n\n`
 }
 
 /**
- * Generate complete SSE stream from Kiro response
- */
-export async function* generateAnthropicSSE(
-  kiroStream: AsyncGenerator<{ type: 'content' | 'done'; data: string | StreamParseResult }>,
-  messageId: string,
-  model: string
-): AsyncGenerator<string> {
-  // Emit message_start
-  yield formatMessageStart(messageId, model)
-
-  // Emit text content_block_start
-  yield formatTextBlockStart(0)
-
-  let finalResult: StreamParseResult | null = null
-
-  // Stream content deltas
-  for await (const event of kiroStream) {
-    if (event.type === 'content') {
-      yield formatTextDelta(0, event.data as string)
-    } else if (event.type === 'done') {
-      finalResult = event.data as StreamParseResult
-    }
-  }
-
-  // Close text block
-  yield formatContentBlockStop(0)
-
-  // Emit tool_use blocks if present
-  if (finalResult && finalResult.toolUses.length > 0) {
-    for (let i = 0; i < finalResult.toolUses.length; i++) {
-      const tool = finalResult.toolUses[i]
-      const index = i + 1
-
-      // Start tool_use block
-      yield formatToolUseBlockStart(index, tool.id, tool.name)
-
-      // Emit input as JSON delta
-      const inputJson = JSON.stringify(tool.input)
-      yield formatInputJsonDelta(index, inputJson)
-
-      // Close tool_use block
-      yield formatContentBlockStop(index)
-    }
-  }
-
-  // Emit message_delta with stop reason
-  const stopReason = finalResult?.stopReason || 'end_turn'
-  yield formatMessageDelta(stopReason)
-
-  // Emit message_stop
-  yield formatMessageStop()
-}
-
-/**
- * Generate SSE stream from already parsed result (non-streaming fallback)
+ * Generate SSE stream from already parsed result
+ * This buffers the entire Kiro response first, calculates tokens, then streams SSE
  */
 export function* generateAnthropicSSEFromResult(
   result: StreamParseResult,
   messageId: string,
   model: string
 ): Generator<string> {
-  // Emit message_start
-  yield formatMessageStart(messageId, model)
+  // Calculate token counts from the complete result
+  const textContent = result.content.join('')
+  const toolInputLength = result.toolUses.reduce(
+    (sum, tool) => sum + JSON.stringify(tool.input).length,
+    0
+  )
+  const totalOutputLength = textContent.length + toolInputLength
+  const { inputTokens, outputTokens } = calculateTokens(
+    result.contextUsagePercentage,
+    model,
+    totalOutputLength
+  )
+
+  // Emit message_start with calculated input_tokens
+  yield formatMessageStart(messageId, model, inputTokens)
 
   // Emit text content
-  const textContent = result.content.join('')
   if (textContent || result.toolUses.length === 0) {
     yield formatTextBlockStart(0)
     if (textContent) {
@@ -193,8 +182,8 @@ export function* generateAnthropicSSEFromResult(
     yield formatContentBlockStop(index)
   }
 
-  // Emit message_delta
-  yield formatMessageDelta(result.stopReason)
+  // Emit message_delta with output_tokens
+  yield formatMessageDelta(result.stopReason, outputTokens)
 
   // Emit message_stop
   yield formatMessageStop()

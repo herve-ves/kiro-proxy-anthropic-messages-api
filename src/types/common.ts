@@ -16,6 +16,8 @@ export interface StreamParseResult {
   content: string[]
   toolUses: ParsedToolUse[]
   stopReason: 'end_turn' | 'tool_use' | 'max_tokens'
+  credits?: number  // Kiro returns credits, not tokens
+  contextUsagePercentage?: number  // Context usage percentage from Kiro
 }
 
 export interface ConvertResult {

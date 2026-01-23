@@ -224,6 +224,22 @@ ANTHROPIC_BASE_URL=http://localhost:8000 ANTHROPIC_API_KEY=my-secret-key claude
 - Tool descriptions truncated to 500 characters
 - Messages must strictly alternate (user ↔ assistant)
 
+## Token Calculation
+
+Kiro API does not provide actual token counts. Instead, it returns `contextUsagePercentage` (0-100) at the end of each response, indicating the percentage of the context window used.
+
+The gateway estimates token counts for Anthropic API compatibility:
+
+```
+totalTokens = contextUsagePercentage × maxContextTokens
+outputTokens = responseTextLength ÷ 4  (rough estimate)
+inputTokens = totalTokens - outputTokens
+```
+
+This allows Claude Code to track context usage and trigger compaction when needed.
+
+**Note:** For streaming responses, the gateway buffers the entire Kiro response first to calculate accurate token counts before streaming SSE events to the client.
+
 ## License
 
 MIT

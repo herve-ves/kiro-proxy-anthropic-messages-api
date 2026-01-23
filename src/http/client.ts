@@ -4,6 +4,7 @@ import { config } from '../config'
 import { authManager } from '../auth/manager'
 import { buildKiroHeaders } from '../utils/headers'
 import { getMachineId } from '../utils/machine-id'
+import { logger } from '../utils/logger'
 
 export interface KiroRequestOptions {
   payload: Record<string, unknown>
@@ -40,7 +41,7 @@ export async function makeKiroRequest(
       // Handle auth errors
       if (response.status === 401 || response.status === 403) {
         if (attempt < config.maxRetries) {
-          console.log(`Auth error (${response.status}), refreshing token...`)
+          logger.debug(`Auth error (${response.status}), refreshing token...`)
           await authManager.handleAuthError()
           retried = true
           continue
@@ -52,7 +53,7 @@ export async function makeKiroRequest(
         if (attempt < config.maxRetries) {
           const retryAfter = response.headers.get('Retry-After')
           const waitMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : 1000
-          console.log(`Rate limited, waiting ${waitMs}ms...`)
+          logger.warn(`Rate limited, waiting ${waitMs}ms...`)
           await sleep(waitMs)
           retried = true
           continue
@@ -61,7 +62,7 @@ export async function makeKiroRequest(
 
       // Handle server errors
       if (response.status >= 500 && attempt < config.maxRetries) {
-        console.log(`Server error (${response.status}), retrying...`)
+        logger.warn(`Server error (${response.status}), retrying...`)
         await sleep(1000 * (attempt + 1)) // Exponential backoff
         retried = true
         continue
@@ -71,7 +72,7 @@ export async function makeKiroRequest(
     } catch (error) {
       // Handle network errors
       if (attempt < config.maxRetries) {
-        console.log(`Network error, retrying...`, error)
+        logger.warn({ error }, 'Network error, retrying...')
         await sleep(1000 * (attempt + 1))
         retried = true
         continue

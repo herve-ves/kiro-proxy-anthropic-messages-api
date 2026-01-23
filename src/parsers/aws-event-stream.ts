@@ -2,6 +2,7 @@
 // Based on KiroProxy implementation
 
 import type { StreamParseResult, ParsedToolUse, ToolInputBuffer } from '../types/common'
+import { logger } from '../utils/logger'
 
 /**
  * AWS Event Stream binary format:
@@ -25,6 +26,7 @@ export function parseEventStream(raw: Uint8Array): StreamParseResult {
 
   const toolInputBuffer: Map<string, ToolInputBuffer> = new Map()
   let pos = 0
+  let eventCount = 0
 
   while (pos < raw.length) {
     // Need at least 12 bytes for prelude (total_len + headers_len + prelude_crc)
@@ -54,6 +56,9 @@ export function parseEventStream(raw: Uint8Array): StreamParseResult {
         const payloadText = new TextDecoder().decode(payloadBytes)
         const payload = JSON.parse(payloadText)
 
+        eventCount++
+        logger.trace({ eventCount, eventType, payloadKeys: Object.keys(payload) }, 'Event parsed')
+
         // Handle different event types
         processPayload(payload, eventType, result, toolInputBuffer)
       } catch {
@@ -63,6 +68,8 @@ export function parseEventStream(raw: Uint8Array): StreamParseResult {
 
     pos += totalLen
   }
+
+  logger.debug({ eventCount, contentChunks: result.content.length }, 'Parser completed')
 
   // Assemble tool calls from buffer
   result.toolUses = assembleToolCalls(toolInputBuffer)
@@ -132,6 +139,22 @@ function processPayload(
     result.content.push(assistantEvent.content as string)
   } else if (payload.content && eventType !== 'toolUseEvent') {
     result.content.push(payload.content as string)
+  }
+
+  // Handle meteringEvent - extract usage (credits)
+  if (eventType === 'meteringEvent') {
+    logger.trace({ payload }, 'meteringEvent payload')
+    if (typeof payload.usage === 'number') {
+      result.credits = payload.usage
+    }
+  }
+
+  // Handle contextUsageEvent - extract context usage percentage
+  if (eventType === 'contextUsageEvent') {
+    const percentage = payload.contextUsagePercentage as number | undefined
+    if (typeof percentage === 'number') {
+      result.contextUsagePercentage = percentage
+    }
   }
 
   // Handle toolUseEvent
@@ -220,47 +243,4 @@ export function concatUint8Arrays(arrays: Uint8Array[]): Uint8Array {
   }
 
   return result
-}
-
-/**
- * Parse a single chunk for streaming (extracts content deltas)
- */
-export function parseChunkForContent(chunk: Uint8Array): string[] {
-  const contents: string[] = []
-  let pos = 0
-
-  while (pos < chunk.length) {
-    if (pos + 12 > chunk.length) break
-
-    const view = new DataView(chunk.buffer, chunk.byteOffset + pos)
-    const totalLen = view.getUint32(0, false)
-    const headersLen = view.getUint32(4, false)
-
-    if (totalLen === 0 || totalLen > chunk.length - pos) break
-
-    const payloadStart = pos + 12 + headersLen
-    const payloadEnd = pos + totalLen - 4
-
-    if (payloadStart < payloadEnd) {
-      try {
-        const payloadBytes = chunk.slice(payloadStart, payloadEnd)
-        const payloadText = new TextDecoder().decode(payloadBytes)
-        const payload = JSON.parse(payloadText)
-
-        // Extract content from assistantResponseEvent
-        const assistantEvent = payload.assistantResponseEvent as Record<string, unknown> | undefined
-        if (assistantEvent?.content) {
-          contents.push(assistantEvent.content as string)
-        } else if (payload.content && !payload.toolUseId) {
-          contents.push(payload.content as string)
-        }
-      } catch {
-        // Skip malformed payloads
-      }
-    }
-
-    pos += totalLen
-  }
-
-  return contents
 }

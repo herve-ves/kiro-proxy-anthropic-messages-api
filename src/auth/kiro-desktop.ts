@@ -3,6 +3,7 @@
 import { homedir } from 'os'
 import { join } from 'path'
 import { config } from '../config'
+import { logger } from '../utils/logger'
 import type { KiroDesktopCredentials } from '../types/kiro'
 import type { AuthToken } from '../types/common'
 
@@ -134,10 +135,10 @@ export async function loadKiroDesktopCredentials(
         if (deviceReg.clientId && deviceReg.clientSecret) {
           credentials.clientId = deviceReg.clientId
           credentials.clientSecret = deviceReg.clientSecret
-          console.log('Loaded IdC device registration')
+          logger.debug('Loaded IdC device registration')
         }
       } else {
-        console.warn(`IdC device registration file not found: ${deviceRegPath}`)
+        logger.warn({ path: deviceRegPath }, 'IdC device registration file not found')
       }
     }
 

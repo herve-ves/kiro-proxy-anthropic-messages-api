@@ -96,8 +96,8 @@ export function extractToolResults(
 
     return {
       toolUseId: block.tool_use_id,
-      content: resultContent,
-      status: block.is_error ? 'error' : 'success',
+      content: [{ text: resultContent }],
+      status: block.is_error ? 'error' as const : 'success' as const,
     }
   })
 }
@@ -126,6 +126,8 @@ export function extractImages(
 
 /**
  * Convert Anthropic tools to Kiro tools format
+ *
+ * Kiro uses toolSpecification format with inputSchema.json containing the full JSON schema
  */
 export function convertTools(tools: AnthropicTool[] | undefined): KiroTool[] {
   if (!tools || tools.length === 0) {
@@ -137,41 +139,19 @@ export function convertTools(tools: AnthropicTool[] | undefined): KiroTool[] {
 
   return limitedTools.map(tool => {
     // Truncate description if too long
-    let description = tool.description || ''
+    let description = tool.description || `Tool: ${tool.name}`
     if (description.length > config.maxToolDescriptionLength) {
       description = description.slice(0, config.maxToolDescriptionLength - 3) + '...'
     }
 
-    // Convert input_schema properties to Kiro parameters format
-    const parameters = convertSchemaToParameters(tool.input_schema)
-
     return {
-      name: tool.name,
-      description,
-      parameters,
-    }
-  })
-}
-
-/**
- * Convert JSON Schema to Kiro tool parameters
- */
-function convertSchemaToParameters(
-  schema: AnthropicTool['input_schema']
-): KiroTool['parameters'] {
-  if (!schema.properties) {
-    return []
-  }
-
-  const required = new Set(schema.required || [])
-
-  return Object.entries(schema.properties).map(([name, prop]) => {
-    const propObj = prop as Record<string, unknown>
-    return {
-      name,
-      type: (propObj.type as string) || 'string',
-      description: propObj.description as string | undefined,
-      required: required.has(name),
+      toolSpecification: {
+        name: tool.name,
+        description,
+        inputSchema: {
+          json: tool.input_schema
+        }
+      }
     }
   })
 }

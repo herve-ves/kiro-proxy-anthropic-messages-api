@@ -6,9 +6,11 @@ import { convertAnthropicToKiro, buildKiroPayload } from '../converters/anthropi
 import { buildAnthropicResponse } from '../converters/kiro-to-anthropic'
 import { makeKiroRequest, createTimeoutController, clearRequestTimeout } from '../http/client'
 import { collectStreamChunks, parseCollectedStream } from '../streaming/kiro-stream'
-import { streamKiroResponse } from '../streaming/kiro-stream'
-import { generateAnthropicSSE } from '../streaming/anthropic-sse'
+import { generateAnthropicSSEFromResult } from '../streaming/anthropic-sse'
 import { generateMessageId, generateConversationId, generateAgentContinuationId } from '../utils/ids'
+import { logger } from '../utils/logger'
+import { recordUsage } from '../utils/usage-db'
+import { authManager } from '../auth/manager'
 import type { AnthropicMessagesRequest } from '../types/anthropic'
 
 const messagesRouter = new Hono()
@@ -20,6 +22,8 @@ messagesRouter.post('/', async (c) => {
   try {
     // Parse request body
     const body = await c.req.json<AnthropicMessagesRequest>()
+
+    logger.info({ model: body.model, stream: body.stream, messages: body.messages.length }, 'Request received')
 
     // Validate required fields
     if (!body.messages || body.messages.length === 0) {
@@ -54,6 +58,9 @@ messagesRouter.post('/', async (c) => {
       kiroModel
     )
 
+    // Debug: Log the full payload being sent to Kiro
+    logger.trace({ payload: kiroPayload }, 'Kiro payload')
+
     // Create timeout controller
     const { controller, timeoutId } = createTimeoutController()
 
@@ -69,7 +76,8 @@ messagesRouter.post('/', async (c) => {
       // Check for errors
       if (!response.ok) {
         const errorText = await response.text()
-        console.error(`Kiro API error: ${response.status} ${errorText}`)
+        logger.error({ status: response.status, error: errorText }, 'Kiro API error')
+        logger.trace({ payload: kiroPayload }, 'Request payload')
         return c.json(
           {
             type: 'error',
@@ -84,17 +92,17 @@ messagesRouter.post('/', async (c) => {
 
       // Handle streaming response
       if (body.stream) {
-        return handleStreamingResponse(c, response, messageId, body.model)
+        return handleStreamingResponse(c, response, messageId, body.model, authManager.getCurrentAccountId())
       }
 
       // Handle non-streaming response
-      return await handleNonStreamingResponse(c, response, messageId, body.model)
+      return await handleNonStreamingResponse(c, response, messageId, body.model, authManager.getCurrentAccountId())
     } catch (error) {
       clearRequestTimeout(timeoutId)
       throw error
     }
   } catch (error) {
-    console.error('Error processing request:', error)
+    logger.error({ error }, 'Error processing request')
 
     if (error instanceof Error && error.message === 'Request timeout') {
       return c.json(
@@ -124,27 +132,49 @@ messagesRouter.post('/', async (c) => {
 
 /**
  * Handle streaming response
+ * Buffers the entire Kiro response first, calculates tokens, then streams SSE
  */
-function handleStreamingResponse(
+async function handleStreamingResponse(
   c: Context,
   response: Response,
   messageId: string,
-  model: string
+  model: string,
+  accountId: string
 ) {
-  // Create readable stream
-  const stream = new ReadableStream({
-    async start(controller) {
-      try {
-        const kiroStream = streamKiroResponse(response)
-        const sseGenerator = generateAnthropicSSE(kiroStream, messageId, model)
+  // Collect all stream chunks first
+  const streamData = await collectStreamChunks(response)
 
-        for await (const chunk of sseGenerator) {
+  // Parse the collected data
+  const parseResult = parseCollectedStream(streamData)
+
+  logger.debug({ credits: parseResult.credits, contextUsage: parseResult.contextUsagePercentage }, 'Usage')
+  logger.trace({ parseResult }, 'Parsed Kiro response')
+
+  // Record usage to SQLite
+  recordUsage({
+    timestamp: Date.now(),
+    messageId,
+    accountId,
+    model,
+    credits: parseResult.credits ?? null,
+    contextUsagePercentage: parseResult.contextUsagePercentage ?? null,
+  })
+
+  // Create readable stream from parsed result
+  const stream = new ReadableStream({
+    start(controller) {
+      try {
+        const sseGenerator = generateAnthropicSSEFromResult(parseResult, messageId, model)
+
+        for (const chunk of sseGenerator) {
+          logger.trace({ chunk: chunk.trim() }, 'SSE chunk')
           controller.enqueue(new TextEncoder().encode(chunk))
         }
 
+        logger.debug('Stream completed')
         controller.close()
       } catch (error) {
-        console.error('Streaming error:', error)
+        logger.error({ error }, 'Streaming error')
         controller.error(error)
       }
     },
@@ -166,7 +196,8 @@ async function handleNonStreamingResponse(
   c: Context,
   response: Response,
   messageId: string,
-  model: string
+  model: string,
+  accountId: string
 ) {
   // Collect all stream chunks
   const streamData = await collectStreamChunks(response)
@@ -174,8 +205,22 @@ async function handleNonStreamingResponse(
   // Parse the collected data
   const parseResult = parseCollectedStream(streamData)
 
+  logger.debug({ credits: parseResult.credits, contextUsage: parseResult.contextUsagePercentage }, 'Usage')
+  logger.trace({ parseResult }, 'Parsed Kiro response')
+
+  // Record usage to SQLite
+  recordUsage({
+    timestamp: Date.now(),
+    messageId,
+    accountId,
+    model,
+    credits: parseResult.credits ?? null,
+    contextUsagePercentage: parseResult.contextUsagePercentage ?? null,
+  })
+
   // Build Anthropic response
   const anthropicResponse = buildAnthropicResponse(parseResult, messageId, model)
+  logger.trace({ anthropicResponse }, 'Anthropic response')
 
   return c.json(anthropicResponse)
 }

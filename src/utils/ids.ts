@@ -22,13 +22,6 @@ export function generateAgentContinuationId(): string {
 }
 
 /**
- * Generate a unique tool use ID
- */
-export function generateToolUseId(): string {
-  return `toolu_${generateRandomId(24)}`
-}
-
-/**
  * Generate a random alphanumeric ID
  */
 function generateRandomId(length: number): string {

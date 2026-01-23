@@ -33,10 +33,3 @@ function generateMachineId(): string {
 
   return hash
 }
-
-/**
- * Reset cached machine ID (for testing)
- */
-export function resetMachineId(): void {
-  cachedMachineId = null
-}

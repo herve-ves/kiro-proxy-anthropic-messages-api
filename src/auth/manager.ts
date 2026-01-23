@@ -1,13 +1,42 @@
 // Authentication Manager
 
 import { config } from '../config'
+import { logger } from '../utils/logger'
 import type { AuthToken } from '../types/common'
 import type { KiroDesktopCredentials, AwsSsoOidcCredentials } from '../types/kiro'
 import { refreshKiroDesktopToken, loadKiroDesktopCredentials } from './kiro-desktop'
 import { refreshAwsSsoOidcToken, loadAwsSsoOidcCredentials } from './aws-sso-oidc'
+import { createHash } from 'crypto'
 
 interface CachedToken extends AuthToken {
   credentials: KiroDesktopCredentials | AwsSsoOidcCredentials
+  accountId: string  // Stable identifier for the account
+}
+
+/**
+ * Generate a stable account ID from credentials
+ */
+function generateAccountId(creds: KiroDesktopCredentials | AwsSsoOidcCredentials, type: string): string {
+  // Use a hash of stable credential fields
+  let identifier: string
+
+  if ('clientIdHash' in creds && creds.clientIdHash) {
+    // Enterprise IdC - use clientIdHash
+    identifier = `idc-${creds.clientIdHash.slice(0, 8)}`
+  } else if ('startUrl' in creds && creds.startUrl) {
+    // AWS SSO OIDC - use hash of startUrl + clientId
+    const hash = createHash('sha256').update(`${creds.startUrl}:${creds.clientId}`).digest('hex').slice(0, 8)
+    identifier = `sso-${hash}`
+  } else if ('provider' in creds && creds.provider) {
+    // Kiro Desktop with provider
+    identifier = `desktop-${creds.provider}`
+  } else {
+    // Fallback: hash of refreshToken (stable per account)
+    const hash = createHash('sha256').update(creds.refreshToken).digest('hex').slice(0, 8)
+    identifier = `${type}-${hash}`
+  }
+
+  return identifier
 }
 
 class AuthManager {
@@ -26,10 +55,11 @@ class AuthManager {
         this.cachedTokens.push({
           ...token,
           credentials: kiroDesktopCreds,
+          accountId: generateAccountId(kiroDesktopCreds, token.type),
         })
-        console.log('Loaded Kiro Desktop (Social) credentials')
+        logger.info('Loaded Kiro Desktop (Social) credentials')
       } catch (error) {
-        console.error('Failed to refresh Kiro Desktop token:', error)
+        logger.error({ error }, 'Failed to refresh Kiro Desktop token')
       }
     }
 
@@ -42,10 +72,11 @@ class AuthManager {
           this.cachedTokens.push({
             ...token,
             credentials: idcCreds,
+            accountId: generateAccountId(idcCreds, token.type),
           })
-          console.log('Loaded Enterprise IdC credentials')
+          logger.info('Loaded Enterprise IdC credentials')
         } catch (error) {
-          console.error('Failed to refresh Enterprise IdC token:', error)
+          logger.error({ error }, 'Failed to refresh Enterprise IdC token')
         }
       }
     }
@@ -58,10 +89,11 @@ class AuthManager {
         this.cachedTokens.push({
           ...token,
           credentials: creds,
+          accountId: generateAccountId(creds, token.type),
         })
-        console.log('Loaded kiro-cli credentials')
+        logger.info('Loaded kiro-cli credentials')
       } catch (error) {
-        console.error('Failed to refresh kiro-cli token:', error)
+        logger.error({ error }, 'Failed to refresh kiro-cli token')
       }
     }
 
@@ -70,7 +102,7 @@ class AuthManager {
     }
 
     this.initialized = true
-    console.log(`Initialized with ${this.cachedTokens.length} credential(s)`)
+    logger.info({ count: this.cachedTokens.length }, 'Initialized credentials')
   }
 
   async getToken(): Promise<string> {
@@ -90,7 +122,7 @@ class AuthManager {
       try {
         await this.refreshCurrentToken()
       } catch (error) {
-        console.error('Failed to refresh token, trying next credential:', error)
+        logger.error({ error }, 'Failed to refresh token, trying next credential')
         this.rotateToNextToken()
         return this.getToken()
       }
@@ -112,13 +144,14 @@ class AuthManager {
     this.cachedTokens[this.currentTokenIndex] = {
       ...newToken,
       credentials: cached.credentials,
+      accountId: cached.accountId,
     }
   }
 
   rotateToNextToken(): void {
     if (this.cachedTokens.length > 1) {
       this.currentTokenIndex = (this.currentTokenIndex + 1) % this.cachedTokens.length
-      console.log(`Rotated to credential ${this.currentTokenIndex + 1}/${this.cachedTokens.length}`)
+      logger.debug({ current: this.currentTokenIndex + 1, total: this.cachedTokens.length }, 'Rotated to next credential')
     }
   }
 
@@ -138,6 +171,14 @@ class AuthManager {
       return config.region
     }
     return this.cachedTokens[this.currentTokenIndex].region
+  }
+
+  getCurrentAccountId(): string {
+    if (this.cachedTokens.length === 0) {
+      return 'unknown'
+    }
+    const cached = this.cachedTokens[this.currentTokenIndex]
+    return cached.accountId
   }
 }
 

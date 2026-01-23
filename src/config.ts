@@ -56,10 +56,29 @@ export const config = {
     'claude-3-haiku-20240307': 'claude-sonnet-4',
   } as Record<string, string>,
 
+  // Model max context tokens (for token estimation from contextUsagePercentage)
+  modelMaxContextTokens: {
+    'claude-sonnet-4': 200000,
+    'claude-opus-4': 200000,
+    'claude-haiku-4': 200000,
+    'claude-3-5-sonnet-20241022': 200000,
+    'claude-3-opus-20240229': 200000,
+    'claude-3-sonnet-20240229': 200000,
+    'claude-3-haiku-20240307': 200000,
+  } as Record<string, number>,
+  defaultMaxContextTokens: 200000,
+
+  // Usage tracking database
+  usageDbFile: expandTilde(process.env.USAGE_DB_FILE) || join(homedir(), '.kiro-proxy', 'usage.db'),
+
   // Kiro version for headers
   kiroVersion: '0.8.0',
 }
 
 export function getKiroModel(anthropicModel: string): string {
   return config.modelMapping[anthropicModel] || config.defaultModel
+}
+
+export function getModelMaxContextTokens(model: string): number {
+  return config.modelMaxContextTokens[model] || config.defaultMaxContextTokens
 }

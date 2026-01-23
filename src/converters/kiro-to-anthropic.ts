@@ -1,12 +1,44 @@
 // Kiro to Anthropic Response Converter
 
+import { getModelMaxContextTokens } from '../config'
 import type {
   AnthropicMessagesResponse,
   AnthropicContentBlock,
   AnthropicTextBlock,
   AnthropicToolUseBlock,
 } from '../types/anthropic'
-import type { ParsedToolUse, StreamParseResult } from '../types/common'
+import type { StreamParseResult } from '../types/common'
+
+/**
+ * Estimate output tokens from text length (rough: length / 4)
+ */
+function estimateOutputTokens(textLength: number): number {
+  return Math.max(1, Math.round(textLength / 4))
+}
+
+/**
+ * Calculate token counts from contextUsagePercentage and output text
+ * - totalTokens = contextUsagePercentage * maxContext
+ * - outputTokens = textLength / 4 (rough estimate)
+ * - inputTokens = totalTokens - outputTokens
+ */
+function calculateTokens(
+  contextUsagePercentage: number | undefined,
+  model: string,
+  outputTextLength: number
+): { inputTokens: number; outputTokens: number } {
+  const outputTokens = estimateOutputTokens(outputTextLength)
+
+  if (contextUsagePercentage === undefined || contextUsagePercentage <= 0) {
+    return { inputTokens: 1, outputTokens }
+  }
+
+  const maxContextTokens = getModelMaxContextTokens(model)
+  const totalTokens = Math.round((contextUsagePercentage / 100) * maxContextTokens)
+  const inputTokens = Math.max(1, totalTokens - outputTokens)
+
+  return { inputTokens, outputTokens }
+}
 
 /**
  * Build Anthropic response from parsed Kiro stream result
@@ -45,6 +77,18 @@ export function buildAnthropicResponse(
     } as AnthropicTextBlock)
   }
 
+  // Calculate token counts
+  const toolInputLength = parseResult.toolUses.reduce(
+    (sum, tool) => sum + JSON.stringify(tool.input).length,
+    0
+  )
+  const totalOutputLength = textContent.length + toolInputLength
+  const { inputTokens, outputTokens } = calculateTokens(
+    parseResult.contextUsagePercentage,
+    model,
+    totalOutputLength
+  )
+
   return {
     id: messageId,
     type: 'message',
@@ -54,48 +98,8 @@ export function buildAnthropicResponse(
     stop_reason: parseResult.stopReason === 'tool_use' ? 'tool_use' : 'end_turn',
     stop_sequence: null,
     usage: {
-      input_tokens: 0,
-      output_tokens: 0,
-    },
-  }
-}
-
-/**
- * Convert a single tool use to Anthropic format
- */
-export function convertToolUseToAnthropic(toolUse: ParsedToolUse): AnthropicToolUseBlock {
-  return {
-    type: 'tool_use',
-    id: toolUse.id,
-    name: toolUse.name,
-    input: toolUse.input,
-  }
-}
-
-/**
- * Create an error response in Anthropic format
- */
-export function createErrorResponse(
-  error: string,
-  messageId: string,
-  model: string
-): AnthropicMessagesResponse {
-  return {
-    id: messageId,
-    type: 'message',
-    role: 'assistant',
-    content: [
-      {
-        type: 'text',
-        text: `Error: ${error}`,
-      },
-    ],
-    model,
-    stop_reason: 'end_turn',
-    stop_sequence: null,
-    usage: {
-      input_tokens: 0,
-      output_tokens: 0,
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
     },
   }
 }

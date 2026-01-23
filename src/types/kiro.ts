@@ -7,22 +7,25 @@ export interface KiroImage {
   }
 }
 
-export interface KiroToolParameter {
+export interface KiroToolSpecification {
   name: string
-  type: string
-  description?: string
-  required?: boolean
+  description: string
+  inputSchema: {
+    json: Record<string, unknown>
+  }
 }
 
 export interface KiroTool {
-  name: string
-  description: string
-  parameters?: KiroToolParameter[]
+  toolSpecification: KiroToolSpecification
+}
+
+export interface KiroToolResultContent {
+  text: string
 }
 
 export interface KiroToolResult {
   toolUseId: string
-  content: string
+  content: KiroToolResultContent[]
   status: 'success' | 'error'
 }
 

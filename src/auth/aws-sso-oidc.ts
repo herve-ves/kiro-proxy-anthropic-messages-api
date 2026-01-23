@@ -1,6 +1,7 @@
 // AWS SSO OIDC Authentication
 
 import { config } from '../config'
+import { logger } from '../utils/logger'
 import type { AwsSsoOidcCredentials } from '../types/kiro'
 import type { AuthToken } from '../types/common'
 
@@ -89,7 +90,7 @@ export async function loadAwsSsoOidcCredentials(
       db.close()
     }
   } catch (error) {
-    console.error('Failed to load AWS SSO OIDC credentials:', error)
+    logger.error({ error }, 'Failed to load AWS SSO OIDC credentials')
     return []
   }
 }

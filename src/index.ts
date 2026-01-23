@@ -6,6 +6,8 @@ import { cors } from 'hono/cors'
 import { config } from './config'
 import { authManager } from './auth/manager'
 import { messagesRouter } from './routes/messages'
+import { logger } from './utils/logger'
+import { initUsageDb, closeUsageDb } from './utils/usage-db'
 
 const app = new Hono()
 
@@ -54,35 +56,47 @@ app.route('/v1/messages', messagesRouter)
 
 // Initialize auth and start server
 async function main() {
-  console.log('Initializing authentication...')
+  logger.info('Initializing authentication...')
 
   try {
     await authManager.initialize()
-    console.log('Authentication initialized successfully')
+    logger.info('Authentication initialized successfully')
   } catch (error) {
-    console.error('Failed to initialize authentication:', error)
-    console.error('Please ensure you have valid Kiro credentials configured.')
+    logger.error({ error }, 'Failed to initialize authentication')
+    logger.error('Please ensure you have valid Kiro credentials configured.')
     process.exit(1)
   }
 
-  console.log(`Starting server on port ${config.port}...`)
-  console.log(`API Key: ${config.proxyApiKey.slice(0, 4)}...${config.proxyApiKey.slice(-4)}`)
+  // Initialize usage tracking database
+  initUsageDb()
+
+  logger.info({ port: config.port }, 'Starting server...')
+  logger.debug({ apiKey: `...${config.proxyApiKey.slice(-4)}` }, 'API Key')
 
   Bun.serve({
     port: config.port,
     fetch: app.fetch,
   })
 
-  console.log(`Server running at http://localhost:${config.port}`)
-  console.log('')
-  console.log('Usage with Claude Code:')
-  console.log(`  ANTHROPIC_BASE_URL=http://localhost:${config.port} ANTHROPIC_API_KEY=${config.proxyApiKey} claude`)
-  console.log('')
-  console.log('Test with curl:')
-  console.log(`  curl -X POST http://localhost:${config.port}/v1/messages \\`)
-  console.log(`    -H "x-api-key: ${config.proxyApiKey}" \\`)
-  console.log(`    -H "Content-Type: application/json" \\`)
-  console.log(`    -d '{"model":"claude-sonnet-4","max_tokens":1024,"messages":[{"role":"user","content":"Hello!"}]}'`)
+  logger.info({ url: `http://localhost:${config.port}` }, 'Server running')
+  logger.info('')
+  logger.info('Usage with Claude Code:')
+  logger.info(`  ANTHROPIC_BASE_URL=http://localhost:${config.port} ANTHROPIC_AUTH_TOKEN=${config.proxyApiKey} claude`)
+  logger.info('')
+  logger.info('Test with curl:')
+  logger.info(`  curl -X POST http://localhost:${config.port}/v1/messages \\`)
+  logger.info(`    -H "x-api-key: ${config.proxyApiKey}" \\`)
+  logger.info(`    -H "Content-Type: application/json" \\`)
+  logger.info(`    -d '{"model":"claude-sonnet-4","max_tokens":1024,"messages":[{"role":"user","content":"Hello!"}]}'`)
+
+  // Graceful shutdown
+  const shutdown = () => {
+    logger.info('Shutting down...')
+    closeUsageDb()
+    process.exit(0)
+  }
+  process.on('SIGINT', shutdown)
+  process.on('SIGTERM', shutdown)
 }
 
-main().catch(console.error)
+main().catch((err) => logger.error({ err }, 'Fatal error'))
