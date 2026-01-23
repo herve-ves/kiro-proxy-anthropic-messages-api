@@ -83,7 +83,7 @@ export function startServer(port?: number) {
     logger.info({ url: `http://localhost:${serverPort}` }, 'Server running')
     logger.info('')
     logger.info('Usage with Claude Code:')
-    logger.info(`  ANTHROPIC_BASE_URL=http://localhost:${serverPort} ANTHROPIC_AUTH_TOKEN=${config.proxyApiKey} claude`)
+    logger.info(`  ANTHROPIC_BASE_URL=http://localhost:${serverPort} ANTHROPIC_API_KEY=${config.proxyApiKey} claude`)
     logger.info('')
     logger.info('Test with curl:')
     logger.info(`  curl -X POST http://localhost:${serverPort}/v1/messages \\`)
