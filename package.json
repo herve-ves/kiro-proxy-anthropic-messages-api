@@ -1,0 +1,28 @@
+{
+  "name": "kiro-proxy-anthropic-messages-api",
+  "version": "1.0.0",
+  "description": "Kiro to Anthropic Messages API Gateway using Bun + Hono + TypeScript",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun run --watch src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "hono": "^4.6.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.6.0"
+  },
+  "keywords": [
+    "kiro",
+    "anthropic",
+    "claude",
+    "api",
+    "gateway",
+    "proxy"
+  ],
+  "license": "MIT"
+}
