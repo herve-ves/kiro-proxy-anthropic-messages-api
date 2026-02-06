@@ -18,6 +18,7 @@ const KIRO_MODELS = new Set([
   'claude-sonnet-4',
   'claude-haiku-4.5',
   'claude-opus-4.5',
+  'claude-opus-4.6'
 ])
 
 export const config = {
@@ -69,6 +70,8 @@ export const config = {
     'claude-opus-4-1': 'claude-opus-4.5',
     'claude-opus-4-5-20251101': 'claude-opus-4.5',
     'claude-opus-4-5': 'claude-opus-4.5',
+    'claude-opus-4-6': 'claude-opus-4.6',
+    'claude-opus-4-6-v1': 'claude-opus-4.6',
     // Claude 4 Haiku
     'claude-haiku-4-5-20251001': 'claude-haiku-4.5',
     'claude-haiku-4-5': 'claude-haiku-4.5',
@@ -83,6 +86,7 @@ export const config = {
     'claude-sonnet-4': 200000,
     'claude-sonnet-4.5': 200000,
     'claude-opus-4.5': 200000,
+    'claude-opus-4.6': 200000,
     'claude-haiku-4.5': 200000,
   } as Record<string, number>,
   defaultMaxContextTokens: 200000,
@@ -112,7 +116,7 @@ export function getKiroModel(anthropicModel: string): string {
   // Smart fallback based on model name
   const modelLower = anthropicModel.toLowerCase()
   if (modelLower.includes('opus')) {
-    return 'claude-opus-4.5'
+    return 'claude-opus-4.6'
   }
   if (modelLower.includes('haiku')) {
     return 'claude-haiku-4.5'
