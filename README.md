@@ -136,17 +136,42 @@ KIRO_IDC_CREDS_FILE=~/.aws/sso/cache/kiro-auth-token.json
 KIRO_CLI_DB_FILE=~/.kiro-cli/kiro-cli.db
 ```
 
-## Usage
+## CLI Commands
 
-### Start the Server
+The gateway provides a Commander-based CLI with the following subcommands:
+
+### `serve` (default)
+
+Start the API gateway server.
 
 ```bash
-# Production
+# Start with default port (8000)
 bun run start
 
-# Development (with hot reload)
+# Start with custom port
+bun run src/index.ts serve --port 3000
+
+# Development with hot reload
 bun run dev
 ```
+
+### `models`
+
+List available Kiro models from the API, model mappings (Anthropic -> Kiro), and context token limits.
+
+```bash
+bun run models
+```
+
+### `credits`
+
+Show your Kiro credits usage and balance, including subscription info, free trial, and bonus quotas.
+
+```bash
+bun run credits
+```
+
+## Usage
 
 ### Test with curl
 
