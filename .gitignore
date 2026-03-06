@@ -24,3 +24,7 @@ npm-debug.log*
 
 # Bun
 bun.lockb
+
+# MITM proxy
+captures/
+.mitm-ca/

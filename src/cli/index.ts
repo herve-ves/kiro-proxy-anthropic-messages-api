@@ -35,4 +35,14 @@ program
     await runCreditsCommand()
   })
 
+program
+  .command('inspect')
+  .description('Launch MITM proxy to capture Kiro API traffic')
+  .option('-p, --port <port>', 'Proxy port', '8888')
+  .option('-o, --output <dir>', 'Capture output directory', 'captures')
+  .action(async (options) => {
+    const { runInspectCommand } = await import('./inspect')
+    await runInspectCommand(options)
+  })
+
 program.parse()
