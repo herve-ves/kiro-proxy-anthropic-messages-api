@@ -102,7 +102,15 @@ async function fetchUsageLimits(): Promise<UsageInfo> {
   const headers = buildKiroHeaders(token, machineId)
 
   // Build URL with query params
-  const url = `${USAGE_LIMITS_URL}?origin=AI_EDITOR&resourceType=AGENTIC_REQUEST`
+  const params = new URLSearchParams({
+    origin: 'AI_EDITOR',
+    resourceType: 'AGENTIC_REQUEST',
+  })
+  const profileArn = authManager.getProfileArn()
+  if (profileArn) {
+    params.set('profileArn', profileArn)
+  }
+  const url = `${USAGE_LIMITS_URL}?${params.toString()}`
 
   const response = await fetch(url, {
     method: 'GET',

@@ -6,6 +6,7 @@ import type { AuthToken } from '../types/common'
 import type { KiroDesktopCredentials, AwsSsoOidcCredentials } from '../types/kiro'
 import { refreshKiroDesktopToken, loadKiroDesktopCredentials } from './kiro-desktop'
 import { refreshAwsSsoOidcToken, loadAwsSsoOidcCredentials } from './aws-sso-oidc'
+import { discoverProfileArn } from './profile'
 import { createHash } from 'crypto'
 
 interface CachedToken extends AuthToken {
@@ -43,6 +44,7 @@ class AuthManager {
   private cachedTokens: CachedToken[] = []
   private currentTokenIndex = 0
   private initialized = false
+  private profileArn: string | undefined = undefined
 
   async initialize(): Promise<void> {
     if (this.initialized) return
@@ -101,8 +103,15 @@ class AuthManager {
       throw new Error('No valid credentials found. Please configure one of: KIRO_DESKTOP_CREDS_FILE, KIRO_IDC_CREDS_FILE, or KIRO_CLI_DB_FILE')
     }
 
+    // Discover profile ARN using the first available token
+    try {
+      this.profileArn = await discoverProfileArn(this.cachedTokens[0].accessToken)
+    } catch (error) {
+      logger.warn({ error }, 'Failed to discover profile ARN')
+    }
+
     this.initialized = true
-    logger.info({ count: this.cachedTokens.length }, 'Initialized credentials')
+    logger.info({ count: this.cachedTokens.length, profileArn: this.profileArn }, 'Initialized credentials')
   }
 
   async getToken(): Promise<string> {
@@ -179,6 +188,10 @@ class AuthManager {
     }
     const cached = this.cachedTokens[this.currentTokenIndex]
     return cached.accountId
+  }
+
+  getProfileArn(): string | undefined {
+    return this.profileArn
   }
 }
 

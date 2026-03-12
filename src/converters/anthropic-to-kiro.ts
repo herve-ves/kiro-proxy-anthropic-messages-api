@@ -134,7 +134,8 @@ export function buildKiroPayload(
   convertResult: ConvertResult,
   conversationId: string,
   agentContinuationId: string,
-  modelId: string
+  modelId: string,
+  profileArn?: string
 ): Record<string, unknown> {
   const currentMessage: Record<string, unknown> = {
     userInputMessage: {
@@ -165,7 +166,7 @@ export function buildKiroPayload(
       userInputMessageContext
   }
 
-  return {
+  const payload: Record<string, unknown> = {
     conversationState: {
       agentContinuationId,
       agentTaskType: 'vibe',
@@ -175,4 +176,10 @@ export function buildKiroPayload(
       history: convertResult.history,
     },
   }
+
+  if (profileArn) {
+    payload.profileArn = profileArn
+  }
+
+  return payload
 }

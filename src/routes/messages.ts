@@ -55,7 +55,8 @@ messagesRouter.post('/', async (c) => {
       convertResult,
       conversationId,
       agentContinuationId,
-      kiroModel
+      kiroModel,
+      authManager.getProfileArn()
     )
 
     // Debug: Log the full payload being sent to Kiro

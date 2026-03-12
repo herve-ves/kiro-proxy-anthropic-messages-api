@@ -95,7 +95,7 @@ export const config = {
   usageDbFile: expandTilde(process.env.USAGE_DB_FILE) || join(homedir(), '.kiro-proxy', 'usage.db'),
 
   // Kiro version for headers
-  kiroVersion: '0.8.0',
+  kiroVersion: '0.9.40',
 }
 
 export function getKiroModel(anthropicModel: string): string {
